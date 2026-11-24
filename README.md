@@ -30,41 +30,43 @@ The block on the right follows the window width. Use a window of about 135 colum
 
 ## Install
 
+With Homebrew:
+
 ```sh
-mkdir -p ~/.claude/state
-curl -fsSL https://raw.githubusercontent.com/amirhp-com/claude-code-statusline/main/statusline.sh -o ~/.claude/statusline.sh
-chmod +x ~/.claude/statusline.sh
+brew install amirhp-com/tap/claude-code-statusline && claude-code-statusline install
 ```
 
-Then add this to `~/.claude/settings.json`:
+Or without it:
 
-```json
-"statusLine": {
-  "type": "command",
-  "command": "$HOME/.claude/statusline.sh",
-  "refreshInterval": 60
-}
+```sh
+curl -fsSL https://raw.githubusercontent.com/amirhp-com/claude-code-statusline/main/install.sh | bash
 ```
+
+Both set `statusLine` in `~/.claude/settings.json` and leave the rest of the file alone. The file as
+it was is kept as `settings.json.before-statusline`.
+
+With the second way, the script is `~/.claude/claude-code-statusline.sh`: use that path instead of
+`claude-code-statusline` in the commands below, and run the same line again to update.
+
+| Command | Does |
+|---|---|
+| `claude-code-statusline install` | Turns it on |
+| `claude-code-statusline install --jalali` | Same, with the plan date in the Jalali calendar |
+| `claude-code-statusline plan-ends 2026-12-20` | Sets the plan end date |
+| `claude-code-statusline plan-ends off` | Hides the plan block |
+| `claude-code-statusline uninstall` | Puts your previous status line back |
+
+Run `uninstall` before `brew uninstall claude-code-statusline`.
 
 ## Plan end date
 
-Claude Code does not report when your plan ends, so the script reads it from a file. Put one
-Gregorian date in it, and change it after each renewal. Delete the file to hide the block.
-
-```sh
-echo 2026-12-20 > ~/.claude/state/subscription-ends
-```
-
-The bar covers the month before that date. To show the date in the Jalali calendar, set the command to:
-
-```json
-"command": "STATUSLINE_CALENDAR=jalali $HOME/.claude/statusline.sh"
-```
+Claude Code does not report when your plan ends, so you set it with `plan-ends` (a Gregorian date)
+and change it after each renewal. The bar covers the month before that date.
 
 ## Files and privacy
 
-The script sends nothing anywhere. It reads the JSON that Claude Code passes to it and writes one
-file, `~/.claude/state/usage-latest.json`, with the last limits.
+The status line sends nothing anywhere. It reads the JSON that Claude Code passes to it and keeps its
+files in `~/.claude/state`: the last limits, the plan end date and your previous status line.
 
 ## License
 

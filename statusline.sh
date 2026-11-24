@@ -3,9 +3,96 @@
 # https://github.com/amirhp-com/claude-code-statusline
 #
 # STATUSLINE_CALENDAR  gregorian (default) or jalali: calendar of the plan end date
-input=$(cat)
-dir="$HOME/.claude/state"
+VERSION=1.0.0
+config="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+dir="$config/state"
+settings="$config/settings.json"
+previous="$dir/claude-code-statusline-previous.json"
+
+usage() {
+  cat <<HELP
+claude-code-statusline $VERSION: a two-line status line for Claude Code
+
+  claude-code-statusline install [--jalali] [--plan-ends YYYY-MM-DD]
+  claude-code-statusline plan-ends YYYY-MM-DD | off
+  claude-code-statusline uninstall
+HELP
+}
+fail() { echo "claude-code-statusline: $1" >&2; exit 1; }
+
+set_plan() {
+  if [ "$1" = off ]; then : > "$dir/subscription-ends"; echo "Plan end date hidden."; return; fi
+  [ "$(date -j -f '%Y-%m-%d' "$1" '+%Y-%m-%d' 2>/dev/null)" = "$1" ] || fail "not a date: '$1' (use YYYY-MM-DD, Gregorian)"
+  echo "$1" > "$dir/subscription-ends"
+  echo "Plan end date: $1"
+}
+
+# write_settings <jq filter> [jq args]: keeps a backup, the file mode and any symlink
+write_settings() {
+  local new filter=$1
+  shift
+  new=$(jq "$@" "$filter" "$settings") || fail "could not update $settings"
+  [ -n "$new" ] || fail "could not update $settings"
+  cp -p "$settings" "$settings.before-statusline" || fail "could not back up $settings"
+  printf '%s\n' "$new" > "$settings"
+}
+
+current_command() { jq -r '.statusLine.command? // ""' "$settings"; }
+
+install_cmd() {
+  local self prefix="" plan=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --jalali) prefix="STATUSLINE_CALENDAR=jalali " ;;
+      --plan-ends) plan=$2; [ -n "$plan" ] || fail "--plan-ends needs a date"; shift ;;
+      *) usage >&2; fail "unknown option: $1" ;;
+    esac
+    shift
+  done
+  self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+  [ -n "$plan" ] && set_plan "$plan"
+  [ -s "$settings" ] || echo '{}' > "$settings"
+  jq -e 'type == "object"' "$settings" >/dev/null 2>&1 || fail "$settings is not valid JSON, nothing was changed"
+  case "$(current_command)" in
+    *claude-code-statusline*) ;;
+    *) jq '.statusLine // null' "$settings" > "$previous" ;;
+  esac
+  write_settings '.statusLine = {type: "command", command: $cmd, refreshInterval: 60}' --arg cmd "$prefix$(printf '%q' "$self")"
+  echo "Installed. The status line appears in Claude Code within a minute."
+  echo "Previous settings: $settings.before-statusline"
+}
+
+uninstall_cmd() {
+  [ -f "$settings" ] || fail "no $settings"
+  case "$(current_command)" in
+    *claude-code-statusline*) ;;
+    *) fail "the status line in $settings is not this one, nothing was changed" ;;
+  esac
+  if [ -s "$previous" ] && [ "$(jq -r 'type' "$previous" 2>/dev/null)" = object ]; then
+    write_settings '.statusLine = $old[0]' --slurpfile old "$previous"
+    echo "Removed. Your previous status line is back."
+  else
+    write_settings 'del(.statusLine)'
+    echo "Removed."
+  fi
+}
+
+[ $# -eq 0 ] && [ -t 0 ] && { usage; exit 0; }
+case "$1" in
+  help|-h|--help) usage; exit 0 ;;
+  version|--version) echo "$VERSION"; exit 0 ;;
+esac
+command -v jq >/dev/null || fail "jq is missing, run: brew install jq"
 mkdir -p "$dir"
+case "$1" in
+  "") ;;
+  install) shift; install_cmd "$@"; exit 0 ;;
+  uninstall) uninstall_cmd; exit 0 ;;
+  plan-ends) set_plan "${2:-}"; exit 0 ;;
+  *) usage >&2; exit 1 ;;
+esac
+
+input=$(cat)
 if echo "$input" | jq -e '.rate_limits.seven_day.used_percentage' >/dev/null 2>&1; then
   echo "$input" | jq -c '{seven_day: .rate_limits.seven_day, five_hour: .rate_limits.five_hour, saved_at: now}' > "$dir/usage-latest.json.tmp" && mv "$dir/usage-latest.json.tmp" "$dir/usage-latest.json"
 fi
